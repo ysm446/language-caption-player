@@ -13,6 +13,40 @@ FORCED_ALIGNER_ID  = "Qwen/Qwen3-ForcedAligner-0.6B"
 # ForcedAligner の最大入力長（ライブラリ定数に合わせた安全値）
 MAX_ALIGN_SEC = 170
 
+# Qwen3-ASR は言語コードではなく言語名を要求する
+LANGUAGE_MAP = {
+    "en":  "English",
+    "zh":  "Chinese",
+    "yue": "Cantonese",
+    "ar":  "Arabic",
+    "de":  "German",
+    "fr":  "French",
+    "es":  "Spanish",
+    "pt":  "Portuguese",
+    "id":  "Indonesian",
+    "it":  "Italian",
+    "ja":  "Japanese",
+    "ko":  "Korean",
+    "ru":  "Russian",
+    "th":  "Thai",
+    "vi":  "Vietnamese",
+    "tr":  "Turkish",
+    "hi":  "Hindi",
+    "ms":  "Malay",
+    "nl":  "Dutch",
+    "sv":  "Swedish",
+    "da":  "Danish",
+    "fi":  "Finnish",
+    "pl":  "Polish",
+    "cs":  "Czech",
+    "tl":  "Filipino",
+    "fa":  "Persian",
+    "el":  "Greek",
+    "ro":  "Romanian",
+    "hu":  "Hungarian",
+    "mk":  "Macedonian",
+}
+
 
 class ASRProcessor:
     def __init__(self):
@@ -114,11 +148,15 @@ class ASRProcessor:
 
         Args:
             video_path: 動画ファイルのパス
-            language:   言語コード（"en"/"zh"/"ja" など）。None で自動検出
+            language:   ISO 言語コード（"en"/"zh"/"ja" など）または None（自動検出）。
+                        Qwen3-ASR が要求する言語名（"English" 等）への変換は内部で行う。
 
         Returns:
             [{"text": str, "timestamp": (start_sec, end_sec)}, ...]
         """
+        # ISO コード → Qwen3-ASR が受け付ける言語名に変換
+        lang_name = LANGUAGE_MAP.get(language) if language else None
+
         audio_path = self.extract_audio(video_path)
         try:
             data, sr = sf.read(audio_path, dtype="float32")
@@ -143,7 +181,7 @@ class ASRProcessor:
 
             results = self.model.transcribe(
                 (chunk, sr),
-                language=language,
+                language=lang_name,
                 return_time_stamps=True,
             )
 

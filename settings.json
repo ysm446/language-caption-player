@@ -1,3 +1,4 @@
 {
-  "translator_model": "Qwen/Qwen3-8B"
+  "translator_model": "Qwen/Qwen3-8B",
+  "lookup_model": "Qwen/Qwen3-1.7B"
 }
