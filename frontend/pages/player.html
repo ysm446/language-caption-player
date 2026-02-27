@@ -80,6 +80,32 @@
       background: rgba(255, 215, 0, 0.18);
     }
 
+    /* ---------- 辞書ツールチップ ---------- */
+    #dictTooltip {
+      position: fixed;
+      display: none;
+      background: #1e1e2e;
+      border: 1px solid #555;
+      border-radius: 8px;
+      padding: 10px 14px;
+      max-width: 300px;
+      font-size: 13px;
+      line-height: 1.7;
+      color: #cdd6f4;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.75);
+      z-index: 9999;
+      pointer-events: none;
+      white-space: pre-wrap;
+    }
+    #dictTooltip .dict-word {
+      font-size: 15px;
+      font-weight: bold;
+      color: #ffd700;
+      margin-bottom: 4px;
+    }
+    #dictTooltip .dict-body { color: #cdd6f4; }
+    #dictTooltip .dict-loading { color: #888; font-style: italic; }
+
     /* ---------- コントロールバー ---------- */
     .controls {
       flex-shrink: 0;
@@ -383,6 +409,89 @@
       if (op) await loadSrt(op, 'orig')
       if (jp) await loadSrt(jp, 'jp')
     })()
+
+    // ---------- 辞書ツールチップ ----------
+    const dictTooltip = document.createElement('div')
+    dictTooltip.id = 'dictTooltip'
+    document.body.appendChild(dictTooltip)
+
+    const dictCache = {}       // word → definition text (or null)
+    let hoverTimer = null
+    let currentHoveredSpan = null
+
+    async function lookupWord(word) {
+      if (word in dictCache) return dictCache[word]
+      try {
+        const res = await fetch('http://localhost:8765/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ word }),
+        })
+        if (!res.ok) { dictCache[word] = null; return null }
+        const data = await res.json()
+        dictCache[word] = data.definition
+        return data.definition
+      } catch {
+        dictCache[word] = null
+        return null
+      }
+    }
+
+    function positionTooltip(anchorEl) {
+      const rect = anchorEl.getBoundingClientRect()
+      const tipW = dictTooltip.offsetWidth
+      const tipH = dictTooltip.offsetHeight
+      let left = rect.left
+      let top  = rect.top - tipH - 8
+      if (left + tipW > window.innerWidth - 8) left = window.innerWidth - tipW - 8
+      if (left < 8) left = 8
+      if (top < 8) top = rect.bottom + 8
+      dictTooltip.style.left = left + 'px'
+      dictTooltip.style.top  = top + 'px'
+    }
+
+    function showTooltip(anchorEl, html) {
+      dictTooltip.innerHTML = html
+      dictTooltip.style.left = '-9999px'
+      dictTooltip.style.display = 'block'
+      requestAnimationFrame(() => positionTooltip(anchorEl))
+    }
+
+    subOrigEl.addEventListener('mouseover', e => {
+      const span = e.target.closest('.word')
+      if (!span || span === currentHoveredSpan) return
+      currentHoveredSpan = span
+      clearTimeout(hoverTimer)
+      dictTooltip.style.display = 'none'
+
+      hoverTimer = setTimeout(async () => {
+        const word = span.textContent.replace(/[^a-zA-Z'-]/g, '')
+        if (!word || word.length < 2) return
+
+        // キャッシュなし → ローディング表示
+        if (!(word.toLowerCase() in dictCache)) {
+          showTooltip(span,
+            `<div class="dict-word">${word}</div><div class="dict-loading">調べています...</div>`
+          )
+        }
+
+        const definition = await lookupWord(word.toLowerCase())
+        if (currentHoveredSpan !== span || !document.body.contains(span)) return
+        if (!definition) { dictTooltip.style.display = 'none'; return }
+
+        showTooltip(span,
+          `<div class="dict-word">${word}</div><div class="dict-body">${definition}</div>`
+        )
+      }, 400)
+    })
+
+    subOrigEl.addEventListener('mouseout', e => {
+      const span = e.target.closest('.word')
+      if (!span) return
+      clearTimeout(hoverTimer)
+      currentHoveredSpan = null
+      dictTooltip.style.display = 'none'
+    })
   </script>
 </body>
 </html>

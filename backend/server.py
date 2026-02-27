@@ -57,6 +57,10 @@ class TranslateRequest(BaseModel):
     srt_path: str  # 翻訳対象の SRT ファイルパス（通常は .original.srt）
 
 
+class LookupRequest(BaseModel):
+    word: str
+
+
 # ---------- エンドポイント ----------
 
 @app.get("/health")
@@ -153,3 +157,20 @@ async def translate(req: TranslateRequest):
         yield sse({"status": "done", "srt_path": out_path, "total": total})
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.post("/lookup")
+async def lookup(req: LookupRequest):
+    """
+    英単語の日本語定義を返す。
+
+    Response:
+      {"word": str, "definition": str}
+    """
+    word = req.word.strip()
+    if not word:
+        raise HTTPException(400, "word が空です")
+
+    loop = asyncio.get_event_loop()
+    definition = await loop.run_in_executor(None, translator.lookup, word)
+    return {"word": word, "definition": definition}
