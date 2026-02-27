@@ -23,30 +23,60 @@ LOOKUP_SYSTEM_PROMPT = (
 
 class Translator:
     def __init__(self):
-        self.model = None
+        self.model_id  = MODEL_ID  # 実行時に変更可能
+        self.model     = None
         self.tokenizer = None
 
     def load(self):
-        self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.model = AutoModelForCausalLM.from_pretrained(
-            MODEL_ID,
+            self.model_id,
             torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
             device_map="auto",
         )
-        print(f"[Translator] Loaded {MODEL_ID}")
+        print(f"[Translator] Loaded {self.model_id}")
+
+    def _unload(self):
+        """モデルを破棄して VRAM を解放する"""
+        if self.model is not None:
+            del self.model
+            del self.tokenizer
+            self.model     = None
+            self.tokenizer = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            print("[Translator] モデルをアンロードしました")
+
+    def set_model_id(self, model_id: str):
+        """翻訳モデルを切り替える。ロード済みの場合は即アンロードして次回使用時にロード。"""
+        if self.model_id != model_id:
+            self._unload()
+            self.model_id = model_id
+            print(f"[Translator] モデルを {model_id} に変更（次回使用時にロード）")
 
     def _ensure_loaded(self):
         """モデルが未ロードであればオンデマンドでロードする"""
         if self.model is None:
             self.load()
 
-    def translate(self, text: str) -> str:
-        """テキスト1件を日本語に翻訳して返す"""
+    def translate(self, text: str, context: list[tuple[str, str]] | None = None) -> str:
+        """テキスト1件を日本語に翻訳して返す。
+
+        Args:
+            text:    翻訳対象のテキスト
+            context: 直前セグメントの (原文, 翻訳) ペアのリスト。
+                     チャット履歴として渡すことで代名詞・用語の一貫性が向上する。
+        """
         self._ensure_loaded()
-        messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Translate to Japanese:\n{text}"},
-        ]
+        messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+        # 直前セグメントをチャット履歴として追加（コンテキスト窓）
+        if context:
+            for orig, jp in context:
+                messages.append({"role": "user",      "content": f"Translate to Japanese:\n{orig}"})
+                messages.append({"role": "assistant",  "content": jp})
+
+        messages.append({"role": "user", "content": f"Translate to Japanese:\n{text}"})
         prompt = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,

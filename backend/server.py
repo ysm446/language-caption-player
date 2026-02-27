@@ -59,11 +59,46 @@ class LookupRequest(BaseModel):
     word: str
 
 
+class SetModelRequest(BaseModel):
+    translator: str
+
+
+# ---------- 利用可能な翻訳モデル ----------
+
+TRANSLATOR_MODELS = [
+    {"id": "Qwen/Qwen3-1.7B", "label": "Qwen3-1.7B", "vram_gb": 3.5, "note": "速い・省メモリ"},
+    {"id": "Qwen/Qwen3-4B",   "label": "Qwen3-4B",   "vram_gb": 8.0, "note": "高品質"},
+    {"id": "Qwen/Qwen3-8B",   "label": "Qwen3-8B",   "vram_gb": 16.0, "note": "最高品質"},
+]
+
+
 # ---------- エンドポイント ----------
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/models")
+def get_models():
+    """利用可能な翻訳モデルの一覧と現在の選択・ロード状態を返す"""
+    return {
+        "translator": {
+            "current":   translator.model_id,
+            "loaded":    translator.model is not None,
+            "available": TRANSLATOR_MODELS,
+        }
+    }
+
+
+@app.post("/models")
+def set_models(req: SetModelRequest):
+    """翻訳モデルを切り替える（ロード済みの場合は即アンロード・次回使用時に再ロード）"""
+    valid_ids = {m["id"] for m in TRANSLATOR_MODELS}
+    if req.translator not in valid_ids:
+        raise HTTPException(400, f"無効なモデルID: {req.translator}")
+    translator.set_model_id(req.translator)
+    return {"status": "ok", "translator": translator.model_id}
 
 
 @app.post("/transcribe")
@@ -153,15 +188,21 @@ async def translate(req: TranslateRequest):
 
         yield sse({"status": "translating", "current": 0, "total": total})
 
+        # 直前 CONTEXT_WINDOW 件の (原文, 翻訳) ペアをスライディング窓として保持
+        CONTEXT_WINDOW = 5
+        context_history: list[tuple[str, str]] = []
+
         for i, seg in enumerate(segments):
+            ctx = context_history[-CONTEXT_WINDOW:] or None
             try:
                 jp_text = await loop.run_in_executor(
-                    None, translator.translate, seg["text"]
+                    None, translator.translate, seg["text"], ctx
                 )
             except Exception as e:
                 yield sse({"status": "error", "message": str(e)})
                 return
 
+            context_history.append((seg["text"], jp_text))
             translated.append({**seg, "text": jp_text})
             yield sse({"status": "translating", "current": i + 1, "total": total})
 

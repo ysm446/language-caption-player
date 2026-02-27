@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, protocol } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, protocol, Menu } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -20,6 +20,7 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  Menu.setApplicationMenu(null)
   createMainWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
