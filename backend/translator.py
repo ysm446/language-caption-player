@@ -35,8 +35,14 @@ class Translator:
         )
         print(f"[Translator] Loaded {MODEL_ID}")
 
+    def _ensure_loaded(self):
+        """モデルが未ロードであればオンデマンドでロードする"""
+        if self.model is None:
+            self.load()
+
     def translate(self, text: str) -> str:
         """テキスト1件を日本語に翻訳して返す"""
+        self._ensure_loaded()
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Translate to Japanese:\n{text}"},
@@ -67,6 +73,7 @@ class Translator:
 
     def lookup(self, word: str) -> str:
         """英単語の日本語定義を生成して返す"""
+        self._ensure_loaded()
         messages = [
             {"role": "system", "content": LOOKUP_SYSTEM_PROMPT},
             {"role": "user", "content": word.strip()},

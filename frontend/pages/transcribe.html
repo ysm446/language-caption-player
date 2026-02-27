@@ -300,7 +300,7 @@
       const btn = document.getElementById('transcribeBtn')
       btn.disabled = true
       resetSection('transcribe')
-      setProgress('transcribe', 10, '音声を抽出中...')
+      setProgress('transcribe', 5, '準備中...')
 
       try {
         const lang = document.getElementById('langSelect').value || null
@@ -310,8 +310,10 @@
           body: JSON.stringify({ video_path: videoPath, language: lang }),
         })
         await readSSE(res, event => {
-          if (event.status === 'extracting_audio') {
-            setProgress('transcribe', 20, '音声を抽出中...')
+          if (event.status === 'loading_model') {
+            setProgress('transcribe', 10, 'ASR モデルをロード中（初回のみ時間がかかります）...')
+          } else if (event.status === 'extracting_audio') {
+            setProgress('transcribe', 30, '音声を抽出中...')
           } else if (event.status === 'saving_srt') {
             setProgress('transcribe', 80, `SRT を生成中 (${event.segments} セグメント)`)
           } else if (event.status === 'done') {
@@ -334,7 +336,7 @@
       const btn = document.getElementById('translateBtn')
       btn.disabled = true
       resetSection('translate')
-      setProgress('translate', 0, '翻訳を開始中...')
+      setProgress('translate', 0, '準備中...')
 
       try {
         const res = await fetch(`${API}/translate`, {
@@ -343,7 +345,9 @@
           body: JSON.stringify({ srt_path: origSrtPath }),
         })
         await readSSE(res, event => {
-          if (event.status === 'translating') {
+          if (event.status === 'loading_model') {
+            setProgress('translate', 2, '翻訳モデルをロード中（初回のみ時間がかかります）...')
+          } else if (event.status === 'translating') {
             const pct = event.total > 0 ? Math.round(event.current / event.total * 100) : 0
             setProgress('translate', pct, `翻訳中 ${event.current} / ${event.total}`)
           } else if (event.status === 'done') {

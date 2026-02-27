@@ -23,12 +23,10 @@ translator = Translator()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("モデルをロード中...")
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, asr.load)
-    await loop.run_in_executor(None, translator.load)
-    print("全モデルの準備完了")
+    print("Language Caption Player API が起動しました（モデルはオンデマンドでロード）")
     yield
+    # シャットダウン時に VRAM を解放
+    asr.unload()
 
 
 app = FastAPI(title="Language Caption Player API", lifespan=lifespan)
@@ -75,8 +73,8 @@ async def transcribe(req: TranscribeRequest):
     進捗は SSE でストリーミング。
 
     Events:
+      {"status": "loading_model"}          ← ASR モデルが未ロードの場合のみ
       {"status": "extracting_audio"}
-      {"status": "transcribing"}
       {"status": "saving_srt", "segments": int}
       {"status": "done", "srt_path": str, "segments": int}
       {"status": "error", "message": str}
@@ -88,6 +86,15 @@ async def transcribe(req: TranscribeRequest):
     async def stream():
         loop = asyncio.get_event_loop()
 
+        # ASR モデルが未ロードならロード（使用後は解放するため毎回必要になることがある）
+        if asr.model is None:
+            yield sse({"status": "loading_model"})
+            try:
+                await loop.run_in_executor(None, asr.load)
+            except Exception as e:
+                yield sse({"status": "error", "message": str(e)})
+                return
+
         yield sse({"status": "extracting_audio"})
         try:
             segments = await loop.run_in_executor(
@@ -96,6 +103,9 @@ async def transcribe(req: TranscribeRequest):
         except Exception as e:
             yield sse({"status": "error", "message": str(e)})
             return
+        finally:
+            # 文字起こし完了（成功・失敗問わず）後に VRAM を解放
+            await loop.run_in_executor(None, asr.unload)
 
         segments = split_long_segments(segments)
         yield sse({"status": "saving_srt", "segments": len(segments)})
@@ -116,6 +126,7 @@ async def translate(req: TranslateRequest):
     セグメントごとに進捗を SSE でストリーミング。
 
     Events:
+      {"status": "loading_model"}          ← Translator モデルが未ロードの場合のみ
       {"status": "translating", "current": int, "total": int}
       {"status": "done", "srt_path": str, "total": int}
       {"status": "error", "message": str}
@@ -130,6 +141,15 @@ async def translate(req: TranslateRequest):
     async def stream():
         loop = asyncio.get_event_loop()
         translated = []
+
+        # Translator が未ロードならロード（単語ルックアップのために使用後は保持）
+        if translator.model is None:
+            yield sse({"status": "loading_model"})
+            try:
+                await loop.run_in_executor(None, translator.load)
+            except Exception as e:
+                yield sse({"status": "error", "message": str(e)})
+                return
 
         yield sse({"status": "translating", "current": 0, "total": total})
 
@@ -164,6 +184,8 @@ async def translate(req: TranslateRequest):
 async def lookup(req: LookupRequest):
     """
     英単語の日本語定義を返す。
+    Translator は translate エンドポイントでロード済みであれば即応答、
+    未ロードの場合は _ensure_loaded() が自動的にロードする。
 
     Response:
       {"word": str, "definition": str}

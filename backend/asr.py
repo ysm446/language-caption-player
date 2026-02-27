@@ -30,6 +30,15 @@ class ASRProcessor:
         )
         print(f"[ASR] Loaded {MODEL_ID} + {FORCED_ALIGNER_ID}")
 
+    def unload(self):
+        """モデルを破棄して VRAM を解放する"""
+        if self.model is not None:
+            del self.model
+            self.model = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            print("[ASR] モデルをアンロードしました")
+
     def extract_audio(self, video_path: str) -> str:
         """動画ファイルから 16kHz モノラル WAV を一時ファイルに抽出する"""
         tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
