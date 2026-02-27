@@ -202,18 +202,12 @@ class ASRProcessor:
 
             print(f"[ASR] チャンク {chunk_idx + 1}/{total_chunks}: text={total_words}単語, aligned={len(aligned_items)}単語, ratio={align_ratio:.0%}")
 
-            if aligned_items and align_ratio >= 0.7:
-                # ForcedAligner が十分にアライメントできた場合：単語レベルタイムスタンプを使用
+            if aligned_items:
+                # ForcedAligner が成功した場合：単語レベルのタイムスタンプを使用
                 chunk_segs = self._align_to_segments(aligned_items, offset_sec=start_sec)
                 segments.extend(chunk_segs)
             else:
-                # ForcedAligner が失敗 or アライメント率が低い → チャンク全体を1セグメントに
-                if aligned_items:
-                    print(
-                        f"[ASR] 低アライメント率 {align_ratio:.0%}"
-                        f" ({len(aligned_items)}/{total_words} 単語)"
-                        f" @ {start_sec:.1f}s → テキストフォールバック"
-                    )
+                # フォールバック：ForcedAligner が失敗した場合はチャンク全体を1セグメントに
                 text = result.text.strip()
                 if text:
                     end_sec = min(start_sample + chunk_samples, len(data)) / sr

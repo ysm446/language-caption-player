@@ -185,6 +185,29 @@
     .sub-toggle-label input { accent-color: var(--accent); cursor: pointer; }
     .sub-toggle-label:has(input:checked) { color: var(--text); }
 
+    /* 再生速度タブ */
+    .speed-tabs {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      background: var(--surface2);
+      border-radius: var(--radius);
+      padding: 2px;
+    }
+    .speed-tab {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-size: 12px;
+      padding: 3px 8px;
+      border-radius: calc(var(--radius) - 2px);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .speed-tab:hover { color: var(--text); }
+    .speed-tab.active { background: var(--accent); color: #fff; }
+
     /* ドロップゾーン（ファイルなし時） */
     .no-video {
       display: flex;
@@ -257,6 +280,13 @@
         <div class="volume-row">
           <span style="font-size:14px">🔊</span>
           <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="speed-tabs" id="speedTabs">
+          <button class="speed-tab" data-speed="0.5">0.5×</button>
+          <button class="speed-tab" data-speed="0.75">0.75×</button>
+          <button class="speed-tab active" data-speed="1">1×</button>
+          <button class="speed-tab" data-speed="1.25">1.25×</button>
+          <button class="speed-tab" data-speed="1.5">1.5×</button>
         </div>
         <div class="sub-toggles">
           <label class="sub-toggle-label">
@@ -521,6 +551,14 @@
       if (op) await loadSrt(op, 'orig')
       if (jp) await loadSrt(jp, 'jp')
     })()
+
+    // ---------- 再生速度 ----------
+    document.getElementById('speedTabs').addEventListener('click', e => {
+      const btn = e.target.closest('.speed-tab')
+      if (!btn) return
+      video.playbackRate = parseFloat(btn.dataset.speed)
+      document.querySelectorAll('.speed-tab').forEach(b => b.classList.toggle('active', b === btn))
+    })
 
     // ---------- 辞書ツールチップ ----------
     const dictTooltip = document.createElement('div')

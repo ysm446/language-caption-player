@@ -130,15 +130,22 @@
     }
 
     /* ---------- モデル選択 ---------- */
+    .model-columns {
+      display: flex;
+      gap: 16px;
+    }
+    .model-column {
+      flex: 1;
+      min-width: 0;
+    }
     .model-group-label {
       font-size: 11px;
       font-weight: 600;
       color: var(--text-dim);
       letter-spacing: 0.04em;
-      margin: 10px 0 4px;
+      margin: 0 0 4px;
       padding-left: 2px;
     }
-    .model-group-label:first-of-type { margin-top: 0; }
     .model-option {
       display: flex;
       align-items: center;
@@ -213,11 +220,16 @@
     <div class="card">
       <div class="section-label">モデル設定</div>
 
-      <div class="model-group-label">翻訳モデル（バッチ処理・翻訳後に自動解放）</div>
-      <div id="translatorModelList"></div>
-
-      <div class="model-group-label">辞書モデル（常駐・リアルタイム検索）</div>
-      <div id="lookupModelList"></div>
+      <div class="model-columns">
+        <div class="model-column">
+          <div class="model-group-label">翻訳モデル（バッチ・翻訳後に解放）</div>
+          <div id="translatorModelList"></div>
+        </div>
+        <div class="model-column">
+          <div class="model-group-label">辞書モデル（常駐・リアルタイム）</div>
+          <div id="lookupModelList"></div>
+        </div>
+      </div>
 
       <div class="model-apply-row">
         <button class="btn btn-ghost" id="applyModelBtn" style="padding:5px 14px; font-size:13px">適用</button>
@@ -232,30 +244,31 @@
       </div>
     </div>
 
-    <!-- ④ 文字起こし -->
-    <div class="card">
-      <div class="section-label">① 文字起こし</div>
-      <button class="btn btn-primary" id="transcribeBtn" disabled>
-        🎙️ 字幕を生成
-      </button>
-      <div class="progress-wrap" id="transcribeProgress" style="display:none">
-        <div class="progress-bar-bg"><div class="progress-bar-fill" id="transcribeFill"></div></div>
-        <div class="progress-label" id="transcribeLabel">準備中...</div>
+    <!-- ④ 文字起こし・日本語翻訳 -->
+    <div style="display:flex; gap:16px">
+      <div class="card" style="flex:1; min-width:0">
+        <div class="section-label">① 文字起こし</div>
+        <button class="btn btn-primary" id="transcribeBtn" disabled style="width:100%; justify-content:center">
+          🎙️ 字幕を生成
+        </button>
+        <div class="progress-wrap" id="transcribeProgress" style="display:none">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="transcribeFill"></div></div>
+          <div class="progress-label" id="transcribeLabel">準備中...</div>
+        </div>
+        <div class="result-row" id="transcribeResult"></div>
       </div>
-      <div class="result-row" id="transcribeResult"></div>
-    </div>
 
-    <!-- ④ 日本語翻訳 -->
-    <div class="card">
-      <div class="section-label">② 日本語字幕を生成</div>
-      <button class="btn btn-primary" id="translateBtn" disabled>
-        🇯🇵 日本語字幕を生成
-      </button>
-      <div class="progress-wrap" id="translateProgress" style="display:none">
-        <div class="progress-bar-bg"><div class="progress-bar-fill" id="translateFill"></div></div>
-        <div class="progress-label" id="translateLabel">準備中...</div>
+      <div class="card" style="flex:1; min-width:0">
+        <div class="section-label">② 日本語字幕を生成</div>
+        <button class="btn btn-primary" id="translateBtn" disabled style="width:100%; justify-content:center">
+          🇯🇵 日本語字幕を生成
+        </button>
+        <div class="progress-wrap" id="translateProgress" style="display:none">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="translateFill"></div></div>
+          <div class="progress-label" id="translateLabel">準備中...</div>
+        </div>
+        <div class="result-row" id="translateResult"></div>
       </div>
-      <div class="result-row" id="translateResult"></div>
     </div>
 
     <!-- ⑤ プレイヤーで開く -->
