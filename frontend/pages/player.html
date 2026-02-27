@@ -79,6 +79,10 @@
       color: #ffd700;
       background: rgba(255, 215, 0, 0.18);
     }
+    .word.word-active {
+      color: #fff;
+      background: rgba(255, 215, 0, 0.38);
+    }
 
     /* ---------- 辞書ツールチップ ---------- */
     #dictTooltip {
@@ -193,6 +197,23 @@
     }
     .no-video .icon { font-size: 48px; }
     .no-video .btn { margin-top: 8px; }
+
+    /* ドラッグオーバー時のビデオエリアオーバーレイ */
+    .video-wrap.drag-over::after {
+      content: '動画ファイルをドロップ';
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: var(--accent);
+      background: rgba(74, 158, 255, 0.12);
+      border: 2px dashed var(--accent);
+      border-radius: 4px;
+      pointer-events: none;
+    }
+    .video-wrap { position: relative; }
   </style>
 </head>
 <body>
@@ -230,7 +251,9 @@
         <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1">
       </div>
       <div class="ctrl-row">
-        <button class="ctrl-btn" id="playBtn" title="再生/一時停止">▶</button>
+        <button class="ctrl-btn" id="repeatBtn" title="字幕を繰り返す (R)">↩</button>
+        <button class="ctrl-btn" id="rewindBtn" title="5秒戻る (←)">⏪ 5s</button>
+        <button class="ctrl-btn" id="playBtn" title="再生/一時停止 (Space)">▶</button>
         <div class="volume-row">
           <span style="font-size:14px">🔊</span>
           <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1">
@@ -249,8 +272,9 @@
 
   <script>
     // ---------- 状態 ----------
-    let origSubtitles = []
-    let jpSubtitles   = []
+    let origSubtitles  = []
+    let jpSubtitles    = []
+    let currentOrigSeg = null  // 再レンダリング抑制用
 
     // ---------- DOM ----------
     const video       = document.getElementById('video')
@@ -291,26 +315,50 @@
       return subs.find(s => t >= s.start && t <= s.end) ?? null
     }
 
-    // 単語を <span class="word"> で囲む
-    function wrapWords(text) {
-      return text.split(' ').map(w => {
+    // 単語を <span class="word"> で囲む（セグメント時間を均等割りで各単語に付与）
+    function wrapWords(text, segStart, segEnd) {
+      const parts = text.split(' ')
+      const wordCount = parts.filter(w => w.trim()).length || 1
+      const wordDuration = (segEnd - segStart) / wordCount
+      let wordIndex = 0
+      return parts.map(w => {
         if (!w.trim()) return w
-        return `<span class="word" title="${w.replace(/"/g, '&quot;')}">${w}</span>`
+        const wStart = (segStart + wordIndex * wordDuration).toFixed(3)
+        const wEnd   = (segStart + (wordIndex + 1) * wordDuration).toFixed(3)
+        wordIndex++
+        return `<span class="word" data-start="${wStart}" data-end="${wEnd}">${w}</span>`
       }).join(' ')
     }
 
     function updateSubtitles() {
       const t = video.currentTime
 
+      // ---- 原文字幕 ----
       const origSub = findSub(origSubtitles, t)
-      if (showOrig.checked && origSub) {
-        subOrigEl.innerHTML = wrapWords(origSub.text)
+      if (showOrig.checked) {
         subOrigEl.style.display = ''
+        if (origSub !== currentOrigSeg) {
+          // セグメント切り替わり時のみ再レンダリング（ホバー中のスパンを壊さない）
+          currentOrigSeg = origSub
+          subOrigEl.innerHTML = origSub
+            ? wrapWords(origSub.text, origSub.start, origSub.end)
+            : ''
+        }
+        // 現在発話中の単語をハイライト
+        if (origSub) {
+          subOrigEl.querySelectorAll('.word').forEach(span => {
+            const active = t >= parseFloat(span.dataset.start) &&
+                           t <  parseFloat(span.dataset.end)
+            span.classList.toggle('word-active', active)
+          })
+        }
       } else {
         subOrigEl.innerHTML = ''
-        subOrigEl.style.display = showOrig.checked ? '' : 'none'
+        subOrigEl.style.display = 'none'
+        currentOrigSeg = null
       }
 
+      // ---- 日本語字幕 ----
       const jpSub = findSub(jpSubtitles, t)
       if (showJp.checked && jpSub) {
         subJpEl.textContent = jpSub.text
@@ -336,6 +384,19 @@
     playBtn.addEventListener('click', () => {
       video.paused ? video.play() : video.pause()
     })
+
+    // 字幕リピート：現在の字幕の先頭に戻る（なければ5秒戻る）
+    function repeatSubtitle() {
+      const sub = findSub(origSubtitles, video.currentTime)
+        || findSub(jpSubtitles, video.currentTime)
+      video.currentTime = sub ? sub.start : Math.max(0, video.currentTime - 5)
+      if (video.paused) video.play()
+    }
+    document.getElementById('repeatBtn').addEventListener('click', repeatSubtitle)
+    document.getElementById('rewindBtn').addEventListener('click', () => {
+      video.currentTime = Math.max(0, video.currentTime - 5)
+    })
+
     seekBar.addEventListener('input', () => {
       if (!isNaN(video.duration))
         video.currentTime = (seekBar.value / 100) * video.duration
@@ -347,9 +408,10 @@
     // キーボードショートカット
     document.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT') return
-      if (e.code === 'Space') { e.preventDefault(); video.paused ? video.play() : video.pause() }
+      if (e.code === 'Space')      { e.preventDefault(); video.paused ? video.play() : video.pause() }
       if (e.code === 'ArrowRight') video.currentTime += 5
       if (e.code === 'ArrowLeft')  video.currentTime -= 5
+      if (e.code === 'KeyR')       { e.preventDefault(); repeatSubtitle() }
     })
 
     function fmt(sec) {
@@ -367,6 +429,12 @@
       video.src = toFileUrl(filePath)
       video.style.display = 'block'
       noVideo.style.display = 'none'
+      // 新しい動画に切り替えたら字幕をリセット
+      origSubtitles = []
+      jpSubtitles   = []
+      currentOrigSeg = null
+      subOrigEl.innerHTML = ''
+      subJpEl.textContent = ''
     }
 
     async function loadSrt(filePath, kind) {
@@ -381,14 +449,32 @@
       }
     }
 
+    // 動画と同階層の .original.srt / .japanese.srt を自動読み込み
+    async function tryAutoLoadSrt(videoFilePath) {
+      const stem = videoFilePath.replace(/\.[^.]+$/, '')
+      const targets = [
+        { path: stem + '.original.srt', kind: 'orig' },
+        { path: stem + '.japanese.srt', kind: 'jp' },
+      ]
+      for (const { path, kind } of targets) {
+        const result = await window.electronAPI.readFile(path)
+        if (result.ok) {
+          const subs = parseSRT(result.content)
+          if (kind === 'orig') origSubtitles = subs
+          else                 jpSubtitles   = subs
+          console.log(`[SRT] 自動読み込み ${kind}: ${subs.length} セグメント (${path})`)
+        }
+      }
+    }
+
     // ---------- ヘッダーボタン ----------
     document.getElementById('loadVideoBtn').addEventListener('click', async () => {
       const p = await window.electronAPI.openVideo()
-      if (p) loadVideo(p)
+      if (p) { loadVideo(p); await tryAutoLoadSrt(p) }
     })
     document.getElementById('loadVideoBtn2').addEventListener('click', async () => {
       const p = await window.electronAPI.openVideo()
-      if (p) loadVideo(p)
+      if (p) { loadVideo(p); await tryAutoLoadSrt(p) }
     })
     document.getElementById('loadOrigBtn').addEventListener('click', async () => {
       const p = await window.electronAPI.openSrt()
@@ -397,6 +483,32 @@
     document.getElementById('loadJpBtn').addEventListener('click', async () => {
       const p = await window.electronAPI.openSrt()
       if (p) await loadSrt(p, 'jp')
+    })
+
+    // ---------- ドラッグ&ドロップで動画を開く ----------
+    const videoWrap = document.querySelector('.video-wrap')
+
+    // ウィンドウ全体でデフォルトのファイルナビゲーションを抑制
+    window.addEventListener('dragover', e => e.preventDefault())
+    window.addEventListener('drop',     e => e.preventDefault())
+
+    videoWrap.addEventListener('dragenter', e => {
+      if (e.dataTransfer.types.includes('Files')) videoWrap.classList.add('drag-over')
+    })
+    videoWrap.addEventListener('dragleave', e => {
+      if (!videoWrap.contains(e.relatedTarget)) videoWrap.classList.remove('drag-over')
+    })
+    videoWrap.addEventListener('dragover', e => {
+      e.preventDefault()
+      if (e.dataTransfer.types.includes('Files')) videoWrap.classList.add('drag-over')
+    })
+    videoWrap.addEventListener('drop', async e => {
+      e.preventDefault()
+      videoWrap.classList.remove('drag-over')
+      const file = e.dataTransfer.files[0]
+      if (!file) return
+      const p = window.electronAPI.getPathForFile(file)
+      if (p) { loadVideo(p); await tryAutoLoadSrt(p) }
     })
 
     // ---------- URL パラメーターから自動ロード ----------

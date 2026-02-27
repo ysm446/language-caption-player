@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer, webUtils } = require('electron')
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // ファイルダイアログ
@@ -10,4 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // プレイヤーウィンドウを開く
   openPlayer: (args)    => ipcRenderer.invoke('window:openPlayer', args),
+
+  // ドラッグ&ドロップされた File オブジェクトから絶対パスを取得
+  // (Electron 32+ で file.path が sandbox 環境で使えなくなったための代替)
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 })

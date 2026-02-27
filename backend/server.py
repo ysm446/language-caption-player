@@ -15,7 +15,7 @@ os.environ["HF_HOME"] = str(Path(__file__).parent.parent / "models")
 
 from .asr import ASRProcessor
 from .translator import Translator
-from .subtitle import segments_to_srt, srt_file_to_segments, save_srt, make_output_path
+from .subtitle import segments_to_srt, srt_file_to_segments, save_srt, make_output_path, split_long_segments
 
 asr = ASRProcessor()
 translator = Translator()
@@ -97,6 +97,7 @@ async def transcribe(req: TranscribeRequest):
             yield sse({"status": "error", "message": str(e)})
             return
 
+        segments = split_long_segments(segments)
         yield sse({"status": "saving_srt", "segments": len(segments)})
 
         srt_content = segments_to_srt(segments)

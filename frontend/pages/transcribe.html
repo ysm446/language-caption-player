@@ -240,6 +240,10 @@
     dropZone.addEventListener('click', selectVideo)
     changeBtn.addEventListener('click', selectVideo)
 
+    // ウィンドウ全体でデフォルトのファイルナビゲーションを抑制
+    window.addEventListener('dragover', e => e.preventDefault())
+    window.addEventListener('drop',     e => e.preventDefault())
+
     dropZone.addEventListener('dragover', e => {
       e.preventDefault(); dropZone.classList.add('drag-over')
     })
@@ -248,7 +252,7 @@
       e.preventDefault()
       dropZone.classList.remove('drag-over')
       const file = e.dataTransfer.files[0]
-      if (file) setVideo(file.path)
+      if (file) setVideo(window.electronAPI.getPathForFile(file))
     })
 
     // ---------- ヘルパー ----------
