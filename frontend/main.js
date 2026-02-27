@@ -5,9 +5,9 @@ const fs = require('fs')
 function createMainWindow() {
   const win = new BrowserWindow({
     width: 900,
-    height: 700,
+    height: 900,
     minWidth: 700,
-    minHeight: 500,
+    minHeight: 650,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

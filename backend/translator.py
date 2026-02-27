@@ -36,6 +36,10 @@ class Translator:
         )
         print(f"[Translator] Loaded {self.model_id}")
 
+    def unload(self):
+        """モデルを破棄して VRAM を解放する（公開API）"""
+        self._unload()
+
     def _unload(self):
         """モデルを破棄して VRAM を解放する"""
         if self.model is not None:

@@ -130,6 +130,15 @@
     }
 
     /* ---------- モデル選択 ---------- */
+    .model-group-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+      margin: 10px 0 4px;
+      padding-left: 2px;
+    }
+    .model-group-label:first-of-type { margin-top: 0; }
     .model-option {
       display: flex;
       align-items: center;
@@ -145,9 +154,15 @@
     .model-apply-row {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       margin-top: 10px;
       font-size: 13px;
+      flex-wrap: wrap;
+    }
+    .model-status-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .status-dot {
       width: 8px;
@@ -194,14 +209,26 @@
       </select>
     </div>
 
-    <!-- ③ 翻訳モデル設定 -->
+    <!-- ③ モデル設定 -->
     <div class="card">
-      <div class="section-label">翻訳モデル</div>
-      <div id="modelList"></div>
+      <div class="section-label">モデル設定</div>
+
+      <div class="model-group-label">翻訳モデル（バッチ処理・翻訳後に自動解放）</div>
+      <div id="translatorModelList"></div>
+
+      <div class="model-group-label">辞書モデル（常駐・リアルタイム検索）</div>
+      <div id="lookupModelList"></div>
+
       <div class="model-apply-row">
         <button class="btn btn-ghost" id="applyModelBtn" style="padding:5px 14px; font-size:13px">適用</button>
-        <span class="status-dot" id="modelDot"></span>
-        <span id="modelStatusText" style="color:var(--text-dim)">接続中...</span>
+        <div class="model-status-group">
+          <span class="status-dot" id="translatorDot"></span>
+          <span id="translatorStatusText" style="color:var(--text-dim)">接続中...</span>
+        </div>
+        <div class="model-status-group" style="margin-left:8px">
+          <span class="status-dot" id="lookupDot"></span>
+          <span id="lookupStatusText" style="color:var(--text-dim)"></span>
+        </div>
       </div>
     </div>
 
@@ -428,43 +455,56 @@
       window.electronAPI.openPlayer({})
     })
 
-    // ---------- 翻訳モデル管理 ----------
+    // ---------- モデル管理 ----------
+    function renderModelList(containerId, radioName, available, current) {
+      document.getElementById(containerId).innerHTML = available.map(m => `
+        <label class="model-option">
+          <input type="radio" name="${radioName}" value="${m.id}"
+                 ${m.id === current ? 'checked' : ''}>
+          <span>${m.label}</span>
+          <span class="model-meta">~${m.vram_gb} GB · ${m.note}</span>
+        </label>
+      `).join('')
+    }
+
+    function setModelStatus(dotId, textId, info, label) {
+      const dot  = document.getElementById(dotId)
+      const text = document.getElementById(textId)
+      dot.classList.toggle('loaded', info.loaded)
+      const modelLabel = info.available.find(m => m.id === info.current)?.label ?? info.current
+      text.textContent = `${label}: ${info.loaded ? 'ロード済み' : '未ロード'}（${modelLabel}）`
+    }
+
     async function fetchModels() {
       try {
         const res = await fetch(`${API}/models`)
         if (!res.ok) return
-        const { translator: info } = await res.json()
+        const { translator: tInfo, lookup: lInfo } = await res.json()
 
-        document.getElementById('modelList').innerHTML = info.available.map(m => `
-          <label class="model-option">
-            <input type="radio" name="translatorModel" value="${m.id}"
-                   ${m.id === info.current ? 'checked' : ''}>
-            <span>${m.label}</span>
-            <span class="model-meta">~${m.vram_gb} GB · ${m.note}</span>
-          </label>
-        `).join('')
+        renderModelList('translatorModelList', 'translatorModel', tInfo.available, tInfo.current)
+        renderModelList('lookupModelList',     'lookupModel',     lInfo.available, lInfo.current)
 
-        const dot  = document.getElementById('modelDot')
-        const text = document.getElementById('modelStatusText')
-        dot.classList.toggle('loaded', info.loaded)
-        text.textContent = info.loaded
-          ? `ロード済み（${info.available.find(m => m.id === info.current)?.label ?? info.current}）`
-          : '未ロード'
+        setModelStatus('translatorDot', 'translatorStatusText', tInfo, '翻訳')
+        setModelStatus('lookupDot',     'lookupStatusText',     lInfo, '辞書')
       } catch {
-        document.getElementById('modelStatusText').textContent = 'バックエンド未起動'
+        document.getElementById('translatorStatusText').textContent = 'バックエンド未起動'
+        document.getElementById('lookupStatusText').textContent = ''
       }
     }
 
     document.getElementById('applyModelBtn').addEventListener('click', async () => {
-      const sel = document.querySelector('input[name="translatorModel"]:checked')
-      if (!sel) return
-      const btn = document.getElementById('applyModelBtn')
+      const tSel = document.querySelector('input[name="translatorModel"]:checked')
+      const lSel = document.querySelector('input[name="lookupModel"]:checked')
+      const btn  = document.getElementById('applyModelBtn')
       btn.disabled = true
       try {
+        const body = {}
+        if (tSel) body.translator = tSel.value
+        if (lSel) body.lookup     = lSel.value
         await fetch(`${API}/models`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ translator: sel.value }),
+          body: JSON.stringify(body),
         })
         await fetchModels()
       } finally {

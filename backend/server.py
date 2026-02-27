@@ -17,8 +17,32 @@ from .asr import ASRProcessor
 from .translator import Translator
 from .subtitle import segments_to_srt, srt_file_to_segments, save_srt, make_output_path, split_long_segments
 
+SETTINGS_PATH = Path(__file__).parent.parent / "settings.json"
+
+
+def load_settings() -> dict:
+    try:
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def save_settings(data: dict) -> None:
+    current = load_settings()
+    current.update(data)
+    SETTINGS_PATH.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 asr = ASRProcessor()
-translator = Translator()
+translator        = Translator()  # バッチ翻訳用（翻訳完了後にアンロード）
+translator_lookup = Translator()  # 辞書検索用（常駐）
+
+# 前回選択したモデルを復元
+_s = load_settings()
+if _m := _s.get("translator_model"):
+    translator.set_model_id(_m)
+if _m := _s.get("lookup_model"):
+    translator_lookup.set_model_id(_m)
 
 
 @asynccontextmanager
@@ -60,7 +84,8 @@ class LookupRequest(BaseModel):
 
 
 class SetModelRequest(BaseModel):
-    translator: str
+    translator: Optional[str] = None  # バッチ翻訳モデル
+    lookup:     Optional[str] = None  # 辞書検索モデル
 
 
 # ---------- 利用可能な翻訳モデル ----------
@@ -81,24 +106,39 @@ def health():
 
 @app.get("/models")
 def get_models():
-    """利用可能な翻訳モデルの一覧と現在の選択・ロード状態を返す"""
+    """利用可能なモデルの一覧と現在の選択・ロード状態を返す"""
     return {
         "translator": {
             "current":   translator.model_id,
             "loaded":    translator.model is not None,
             "available": TRANSLATOR_MODELS,
-        }
+        },
+        "lookup": {
+            "current":   translator_lookup.model_id,
+            "loaded":    translator_lookup.model is not None,
+            "available": TRANSLATOR_MODELS,
+        },
     }
 
 
 @app.post("/models")
 def set_models(req: SetModelRequest):
-    """翻訳モデルを切り替える（ロード済みの場合は即アンロード・次回使用時に再ロード）"""
+    """翻訳・辞書モデルを切り替える（ロード済みの場合は即アンロード・次回使用時に再ロード）"""
     valid_ids = {m["id"] for m in TRANSLATOR_MODELS}
-    if req.translator not in valid_ids:
-        raise HTTPException(400, f"無効なモデルID: {req.translator}")
-    translator.set_model_id(req.translator)
-    return {"status": "ok", "translator": translator.model_id}
+    to_save = {}
+    if req.translator is not None:
+        if req.translator not in valid_ids:
+            raise HTTPException(400, f"無効なモデルID: {req.translator}")
+        translator.set_model_id(req.translator)
+        to_save["translator_model"] = translator.model_id
+    if req.lookup is not None:
+        if req.lookup not in valid_ids:
+            raise HTTPException(400, f"無効なモデルID: {req.lookup}")
+        translator_lookup.set_model_id(req.lookup)
+        to_save["lookup_model"] = translator_lookup.model_id
+    if to_save:
+        save_settings(to_save)
+    return {"status": "ok", "translator": translator.model_id, "lookup": translator_lookup.model_id}
 
 
 @app.post("/transcribe")
@@ -192,19 +232,23 @@ async def translate(req: TranslateRequest):
         CONTEXT_WINDOW = 5
         context_history: list[tuple[str, str]] = []
 
-        for i, seg in enumerate(segments):
-            ctx = context_history[-CONTEXT_WINDOW:] or None
-            try:
-                jp_text = await loop.run_in_executor(
-                    None, translator.translate, seg["text"], ctx
-                )
-            except Exception as e:
-                yield sse({"status": "error", "message": str(e)})
-                return
+        try:
+            for i, seg in enumerate(segments):
+                ctx = context_history[-CONTEXT_WINDOW:] or None
+                try:
+                    jp_text = await loop.run_in_executor(
+                        None, translator.translate, seg["text"], ctx
+                    )
+                except Exception as e:
+                    yield sse({"status": "error", "message": str(e)})
+                    return
 
-            context_history.append((seg["text"], jp_text))
-            translated.append({**seg, "text": jp_text})
-            yield sse({"status": "translating", "current": i + 1, "total": total})
+                context_history.append((seg["text"], jp_text))
+                translated.append({**seg, "text": jp_text})
+                yield sse({"status": "translating", "current": i + 1, "total": total})
+        finally:
+            # 翻訳完了（成功・失敗問わず）後に VRAM を解放
+            await loop.run_in_executor(None, translator.unload)
 
         # japanese.srt を保存
         # .original.srt → .japanese.srt、それ以外は .japanese.srt を付加
@@ -236,5 +280,5 @@ async def lookup(req: LookupRequest):
         raise HTTPException(400, "word が空です")
 
     loop = asyncio.get_event_loop()
-    definition = await loop.run_in_executor(None, translator.lookup, word)
+    definition = await loop.run_in_executor(None, translator_lookup.lookup, word)
     return {"word": word, "definition": definition}
