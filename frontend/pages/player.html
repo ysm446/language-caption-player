@@ -139,20 +139,39 @@
     .ctrl-row {
       display: flex;
       align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .ctrl-left,
+    .ctrl-right {
+      display: flex;
+      align-items: center;
       gap: 10px;
+      min-width: 0;
+    }
+    .ctrl-right {
+      margin-left: auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
     }
     .ctrl-btn {
       background: none;
       border: none;
       color: var(--text);
-      font-size: 18px;
+      font-size: 14px;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 6px 10px;
       border-radius: var(--radius);
       transition: background 0.15s;
-      line-height: 1;
+      line-height: 1.2;
+      white-space: nowrap;
     }
     .ctrl-btn:hover { background: var(--surface2); }
+    #playBtn {
+      min-width: 48px;
+      font-size: 18px;
+    }
 
     /* 音量 */
     .volume-row {
@@ -171,7 +190,6 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-left: auto;
       font-size: 13px;
     }
     .sub-toggle-label {
@@ -274,27 +292,31 @@
         <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1">
       </div>
       <div class="ctrl-row">
-        <button class="ctrl-btn" id="repeatBtn" title="字幕を繰り返す (R)">↩</button>
-        <button class="ctrl-btn" id="rewindBtn" title="5秒戻る (←)">⏪ 5s</button>
-        <button class="ctrl-btn" id="playBtn" title="再生/一時停止 (Space)">▶</button>
-        <div class="volume-row">
-          <span style="font-size:14px">🔊</span>
-          <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1">
+        <div class="ctrl-left">
+          <button class="ctrl-btn" id="repeatBtn" title="字幕を繰り返す (R)">↩</button>
+          <button class="ctrl-btn" id="rewindBtn" title="5秒戻る (←)">5秒戻る</button>
+          <button class="ctrl-btn" id="playBtn" title="再生/一時停止 (Space)">▶</button>
+          <div class="volume-row">
+            <span style="font-size:14px">🔊</span>
+            <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1">
+          </div>
         </div>
-        <div class="speed-tabs" id="speedTabs">
-          <button class="speed-tab" data-speed="0.5">0.5×</button>
-          <button class="speed-tab" data-speed="0.75">0.75×</button>
-          <button class="speed-tab active" data-speed="1">1×</button>
-          <button class="speed-tab" data-speed="1.25">1.25×</button>
-          <button class="speed-tab" data-speed="1.5">1.5×</button>
-        </div>
-        <div class="sub-toggles">
-          <label class="sub-toggle-label">
-            <input type="checkbox" id="showOrig" checked> 原文
-          </label>
-          <label class="sub-toggle-label">
-            <input type="checkbox" id="showJp" checked> 日本語
-          </label>
+        <div class="ctrl-right">
+          <div class="speed-tabs" id="speedTabs">
+            <button class="speed-tab" data-speed="0.5">0.5×</button>
+            <button class="speed-tab" data-speed="0.75">0.75×</button>
+            <button class="speed-tab active" data-speed="1">1×</button>
+            <button class="speed-tab" data-speed="1.25">1.25×</button>
+            <button class="speed-tab" data-speed="1.5">1.5×</button>
+          </div>
+          <div class="sub-toggles">
+            <label class="sub-toggle-label">
+              <input type="checkbox" id="showOrig" checked> 原文
+            </label>
+            <label class="sub-toggle-label">
+              <input type="checkbox" id="showJp" checked> 日本語
+            </label>
+          </div>
         </div>
       </div>
     </div>
@@ -343,6 +365,11 @@
     // ---------- 字幕同期 ----------
     function findSub(subs, t) {
       return subs.find(s => t >= s.start && t <= s.end) ?? null
+    }
+    function findPrevSub(subs, currentSub) {
+      const i = subs.indexOf(currentSub)
+      if (i > 0) return subs[i - 1]
+      return null
     }
 
     // 単語を <span class="word"> で囲む（セグメント時間を均等割りで各単語に付与）
@@ -417,9 +444,21 @@
 
     // 字幕リピート：現在の字幕の先頭に戻る（なければ5秒戻る）
     function repeatSubtitle() {
-      const sub = findSub(origSubtitles, video.currentTime)
-        || findSub(jpSubtitles, video.currentTime)
-      video.currentTime = sub ? sub.start : Math.max(0, video.currentTime - 5)
+      const t = video.currentTime
+      const nearStartThresholdSec = 0.7
+
+      const origSub = findSub(origSubtitles, t)
+      const jpSub = origSub ? null : findSub(jpSubtitles, t)
+      const sub = origSub || jpSub
+
+      if (sub) {
+        const activeTrack = origSub ? origSubtitles : jpSubtitles
+        const nearStart = (t - sub.start) <= nearStartThresholdSec
+        const prevSub = nearStart ? findPrevSub(activeTrack, sub) : null
+        video.currentTime = prevSub ? prevSub.start : sub.start
+      } else {
+        video.currentTime = Math.max(0, t - 5)
+      }
       if (video.paused) video.play()
     }
     document.getElementById('repeatBtn').addEventListener('click', repeatSubtitle)

@@ -91,9 +91,10 @@ class SetModelRequest(BaseModel):
 # ---------- 利用可能な翻訳モデル ----------
 
 TRANSLATOR_MODELS = [
-    {"id": "Qwen/Qwen3-1.7B", "label": "Qwen3-1.7B", "vram_gb": 3.5, "note": "速い・省メモリ"},
-    {"id": "Qwen/Qwen3-4B",   "label": "Qwen3-4B",   "vram_gb": 8.0, "note": "高品質"},
-    {"id": "Qwen/Qwen3-8B",   "label": "Qwen3-8B",   "vram_gb": 16.0, "note": "最高品質"},
+    {"id": "Qwen/Qwen3-1.7B",  "label": "Qwen3-1.7B",  "vram_gb": 3.5,  "note": "速い・省メモリ"},
+    {"id": "Qwen/Qwen3-4B",    "label": "Qwen3-4B",    "vram_gb": 8.0,  "note": "高品質"},
+    {"id": "Qwen/Qwen3-8B",    "label": "Qwen3-8B",    "vram_gb": 16.0, "note": "高品質・大容量"},
+    {"id": "Qwen/Qwen3-14B",   "label": "Qwen3-14B",   "vram_gb": 28.0, "note": "最高品質"},
 ]
 
 
