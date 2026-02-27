@@ -10,8 +10,10 @@ from qwen_asr import Qwen3ASRModel
 MODEL_ID           = "Qwen/Qwen3-ASR-1.7B"
 FORCED_ALIGNER_ID  = "Qwen/Qwen3-ForcedAligner-0.6B"
 
-# ForcedAligner の最大入力長（ライブラリ定数に合わせた安全値）
-MAX_ALIGN_SEC = 170
+# チャンクサイズ（秒）
+# ForcedAligner の上限は 170s だが、ASR の出力トークン上限による末尾切り捨てを
+# 防ぐため、実際の入力は 90s に抑える。
+MAX_ALIGN_SEC = 90
 
 # Qwen3-ASR は言語コードではなく言語名を要求する
 LANGUAGE_MAP = {
@@ -167,10 +169,11 @@ class ASRProcessor:
         if data.ndim > 1:
             data = data.mean(axis=1)
 
-        chunk_samples = int(MAX_ALIGN_SEC * sr)
+        chunk_samples  = int(MAX_ALIGN_SEC * sr)
+        total_chunks   = max(1, -(-len(data) // chunk_samples))  # ceil 除算
         segments: list[dict] = []
 
-        for start_sample in range(0, len(data), chunk_samples):
+        for chunk_idx, start_sample in enumerate(range(0, len(data), chunk_samples)):
             chunk = data[start_sample : start_sample + chunk_samples]
 
             # 0.5 秒未満の端切れは無音とみなしてスキップ
@@ -178,6 +181,7 @@ class ASRProcessor:
                 continue
 
             start_sec = start_sample / sr
+            print(f"[ASR] チャンク {chunk_idx + 1}/{total_chunks} @ {start_sec:.1f}s 処理中...")
 
             results = self.model.transcribe(
                 (chunk, sr),
@@ -186,16 +190,30 @@ class ASRProcessor:
             )
 
             if not results:
+                print(f"[ASR] チャンク {chunk_idx + 1}/{total_chunks} @ {start_sec:.1f}s: 結果なし（スキップ）")
                 continue
 
             result = results[0]
 
-            if result.time_stamps:
-                # ForcedAligner が成功した場合：単語レベルのタイムスタンプを使用
-                chunk_segs = self._align_to_segments(result.time_stamps, offset_sec=start_sec)
+            # イテラブルをリスト化してアライメント率を計算
+            aligned_items = list(result.time_stamps) if result.time_stamps is not None else []
+            total_words   = len(result.text.split()) if result.text else 0
+            align_ratio   = len(aligned_items) / total_words if total_words > 0 else 0.0
+
+            print(f"[ASR] チャンク {chunk_idx + 1}/{total_chunks}: text={total_words}単語, aligned={len(aligned_items)}単語, ratio={align_ratio:.0%}")
+
+            if aligned_items and align_ratio >= 0.7:
+                # ForcedAligner が十分にアライメントできた場合：単語レベルタイムスタンプを使用
+                chunk_segs = self._align_to_segments(aligned_items, offset_sec=start_sec)
                 segments.extend(chunk_segs)
             else:
-                # フォールバック：ForcedAligner が失敗した場合はチャンク全体を1セグメントに
+                # ForcedAligner が失敗 or アライメント率が低い → チャンク全体を1セグメントに
+                if aligned_items:
+                    print(
+                        f"[ASR] 低アライメント率 {align_ratio:.0%}"
+                        f" ({len(aligned_items)}/{total_words} 単語)"
+                        f" @ {start_sec:.1f}s → テキストフォールバック"
+                    )
                 text = result.text.strip()
                 if text:
                     end_sec = min(start_sample + chunk_samples, len(data)) / sr
