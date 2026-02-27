@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player – Language Caption Player</title>
+  <link rel="stylesheet" href="../css/common.css">
+  <style>
+    html, body {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ---------- ヘッダー ---------- */
+    .header { flex-shrink: 0; }
+
+    /* ---------- メインレイアウト ---------- */
+    .player-layout {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: #000;
+    }
+
+    /* ---------- ビデオ ---------- */
+    .video-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
+      overflow: hidden;
+      min-height: 0;
+    }
+    #video {
+      max-width: 100%;
+      max-height: 100%;
+      display: block;
+    }
+
+    /* ---------- 字幕エリア ---------- */
+    .subtitle-area {
+      flex-shrink: 0;
+      background: #111;
+      border-top: 1px solid var(--border);
+      padding: 14px 24px;
+      min-height: 90px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 6px;
+    }
+    .subtitle-orig {
+      font-size: 17px;
+      color: #d0d0d0;
+      line-height: 1.5;
+      min-height: 26px;
+    }
+    .subtitle-jp {
+      font-size: 19px;
+      font-weight: 500;
+      color: #ffffff;
+      line-height: 1.5;
+      min-height: 28px;
+    }
+
+    /* ---------- 単語 hover ---------- */
+    .word {
+      display: inline-block;
+      cursor: pointer;
+      border-radius: 3px;
+      padding: 0 1px;
+      transition: color 0.12s, background 0.12s;
+    }
+    .word:hover {
+      color: #ffd700;
+      background: rgba(255, 215, 0, 0.18);
+    }
+
+    /* ---------- コントロールバー ---------- */
+    .controls {
+      flex-shrink: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* シークバー */
+    .seek-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .time-label { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+    #seekBar {
+      flex: 1;
+      accent-color: var(--accent);
+      cursor: pointer;
+      height: 4px;
+    }
+
+    /* ボタン行 */
+    .ctrl-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .ctrl-btn {
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 18px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: var(--radius);
+      transition: background 0.15s;
+      line-height: 1;
+    }
+    .ctrl-btn:hover { background: var(--surface2); }
+
+    /* 音量 */
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #volumeBar {
+      width: 70px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* 字幕トグル */
+    .sub-toggles {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-left: auto;
+      font-size: 13px;
+    }
+    .sub-toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      color: var(--text-dim);
+      user-select: none;
+    }
+    .sub-toggle-label input { accent-color: var(--accent); cursor: pointer; }
+    .sub-toggle-label:has(input:checked) { color: var(--text); }
+
+    /* ドロップゾーン（ファイルなし時） */
+    .no-video {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      gap: 12px;
+      color: var(--text-dim);
+    }
+    .no-video .icon { font-size: 48px; }
+    .no-video .btn { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <button class="back-btn" onclick="window.history.back()">←</button>
+    <h1>Player</h1>
+    <div style="display:flex; gap:8px; margin-left:auto">
+      <button class="btn btn-ghost" id="loadVideoBtn" style="padding:6px 12px; font-size:13px">📂 動画</button>
+      <button class="btn btn-ghost" id="loadOrigBtn"  style="padding:6px 12px; font-size:13px">📄 原文SRT</button>
+      <button class="btn btn-ghost" id="loadJpBtn"    style="padding:6px 12px; font-size:13px">🇯🇵 日本語SRT</button>
+    </div>
+  </header>
+
+  <div class="player-layout">
+    <!-- ビデオ -->
+    <div class="video-wrap">
+      <div class="no-video" id="noVideo">
+        <div class="icon">🎬</div>
+        <div>動画ファイルを読み込んでください</div>
+        <button class="btn btn-primary" id="loadVideoBtn2">📂 動画を選択</button>
+      </div>
+      <video id="video" style="display:none"></video>
+    </div>
+
+    <!-- 字幕 -->
+    <div class="subtitle-area">
+      <div class="subtitle-orig" id="subtitleOrig"></div>
+      <div class="subtitle-jp"   id="subtitleJp"></div>
+    </div>
+
+    <!-- コントロール -->
+    <div class="controls">
+      <div class="seek-row">
+        <span class="time-label" id="timeLabel">0:00 / 0:00</span>
+        <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1">
+      </div>
+      <div class="ctrl-row">
+        <button class="ctrl-btn" id="playBtn" title="再生/一時停止">▶</button>
+        <div class="volume-row">
+          <span style="font-size:14px">🔊</span>
+          <input type="range" id="volumeBar" min="0" max="1" step="0.05" value="1">
+        </div>
+        <div class="sub-toggles">
+          <label class="sub-toggle-label">
+            <input type="checkbox" id="showOrig" checked> 原文
+          </label>
+          <label class="sub-toggle-label">
+            <input type="checkbox" id="showJp" checked> 日本語
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ---------- 状態 ----------
+    let origSubtitles = []
+    let jpSubtitles   = []
+
+    // ---------- DOM ----------
+    const video       = document.getElementById('video')
+    const noVideo     = document.getElementById('noVideo')
+    const playBtn     = document.getElementById('playBtn')
+    const seekBar     = document.getElementById('seekBar')
+    const volumeBar   = document.getElementById('volumeBar')
+    const timeLabel   = document.getElementById('timeLabel')
+    const subOrigEl   = document.getElementById('subtitleOrig')
+    const subJpEl     = document.getElementById('subtitleJp')
+    const showOrig    = document.getElementById('showOrig')
+    const showJp      = document.getElementById('showJp')
+
+    // ---------- SRT パーサー ----------
+    function parseSRT(content) {
+      const result = []
+      const blocks = content.trim().split(/\r?\n\r?\n/)
+      for (const block of blocks) {
+        const lines = block.trim().split(/\r?\n/)
+        if (lines.length < 3) continue
+        const m = lines[1].match(
+          /(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/
+        )
+        if (!m) continue
+        const toSec = (h, min, s, ms) =>
+          +h * 3600 + +min * 60 + +s + +ms / 1000
+        result.push({
+          start: toSec(m[1], m[2], m[3], m[4]),
+          end:   toSec(m[5], m[6], m[7], m[8]),
+          text:  lines.slice(2).join('\n'),
+        })
+      }
+      return result
+    }
+
+    // ---------- 字幕同期 ----------
+    function findSub(subs, t) {
+      return subs.find(s => t >= s.start && t <= s.end) ?? null
+    }
+
+    // 単語を <span class="word"> で囲む
+    function wrapWords(text) {
+      return text.split(' ').map(w => {
+        if (!w.trim()) return w
+        return `<span class="word" title="${w.replace(/"/g, '&quot;')}">${w}</span>`
+      }).join(' ')
+    }
+
+    function updateSubtitles() {
+      const t = video.currentTime
+
+      const origSub = findSub(origSubtitles, t)
+      if (showOrig.checked && origSub) {
+        subOrigEl.innerHTML = wrapWords(origSub.text)
+        subOrigEl.style.display = ''
+      } else {
+        subOrigEl.innerHTML = ''
+        subOrigEl.style.display = showOrig.checked ? '' : 'none'
+      }
+
+      const jpSub = findSub(jpSubtitles, t)
+      if (showJp.checked && jpSub) {
+        subJpEl.textContent = jpSub.text
+        subJpEl.style.display = ''
+      } else {
+        subJpEl.textContent = ''
+        subJpEl.style.display = showJp.checked ? '' : 'none'
+      }
+    }
+
+    // ---------- ビデオイベント ----------
+    video.addEventListener('timeupdate', () => {
+      updateSubtitles()
+      if (!isNaN(video.duration)) {
+        seekBar.value = (video.currentTime / video.duration) * 100
+        timeLabel.textContent = `${fmt(video.currentTime)} / ${fmt(video.duration)}`
+      }
+    })
+    video.addEventListener('play',  () => { playBtn.textContent = '⏸' })
+    video.addEventListener('pause', () => { playBtn.textContent = '▶' })
+    video.addEventListener('ended', () => { playBtn.textContent = '▶' })
+
+    playBtn.addEventListener('click', () => {
+      video.paused ? video.play() : video.pause()
+    })
+    seekBar.addEventListener('input', () => {
+      if (!isNaN(video.duration))
+        video.currentTime = (seekBar.value / 100) * video.duration
+    })
+    volumeBar.addEventListener('input', () => {
+      video.volume = volumeBar.value
+    })
+
+    // キーボードショートカット
+    document.addEventListener('keydown', e => {
+      if (e.target.tagName === 'INPUT') return
+      if (e.code === 'Space') { e.preventDefault(); video.paused ? video.play() : video.pause() }
+      if (e.code === 'ArrowRight') video.currentTime += 5
+      if (e.code === 'ArrowLeft')  video.currentTime -= 5
+    })
+
+    function fmt(sec) {
+      const m = Math.floor(sec / 60)
+      const s = Math.floor(sec % 60).toString().padStart(2, '0')
+      return `${m}:${s}`
+    }
+
+    // ---------- ファイル読み込み ----------
+    function toFileUrl(filePath) {
+      return 'file:///' + filePath.replace(/\\/g, '/')
+    }
+
+    function loadVideo(filePath) {
+      video.src = toFileUrl(filePath)
+      video.style.display = 'block'
+      noVideo.style.display = 'none'
+    }
+
+    async function loadSrt(filePath, kind) {
+      const result = await window.electronAPI.readFile(filePath)
+      if (result.ok) {
+        const subs = parseSRT(result.content)
+        if (kind === 'orig') origSubtitles = subs
+        else                 jpSubtitles   = subs
+        console.log(`[SRT] ${kind}: ${subs.length} セグメント`)
+      } else {
+        console.error(`[SRT] 読み込み失敗: ${result.error}`)
+      }
+    }
+
+    // ---------- ヘッダーボタン ----------
+    document.getElementById('loadVideoBtn').addEventListener('click', async () => {
+      const p = await window.electronAPI.openVideo()
+      if (p) loadVideo(p)
+    })
+    document.getElementById('loadVideoBtn2').addEventListener('click', async () => {
+      const p = await window.electronAPI.openVideo()
+      if (p) loadVideo(p)
+    })
+    document.getElementById('loadOrigBtn').addEventListener('click', async () => {
+      const p = await window.electronAPI.openSrt()
+      if (p) await loadSrt(p, 'orig')
+    })
+    document.getElementById('loadJpBtn').addEventListener('click', async () => {
+      const p = await window.electronAPI.openSrt()
+      if (p) await loadSrt(p, 'jp')
+    })
+
+    // ---------- URL パラメーターから自動ロード ----------
+    ;(async () => {
+      const params = new URLSearchParams(window.location.search)
+      const vp  = params.get('video')
+      const op  = params.get('orig')
+      const jp  = params.get('jp')
+      if (vp) loadVideo(vp)
+      if (op) await loadSrt(op, 'orig')
+      if (jp) await loadSrt(jp, 'jp')
+    })()
+  </script>
+</body>
+</html>

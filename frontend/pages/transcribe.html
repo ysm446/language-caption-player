@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Language Caption Player</title>
+  <link rel="stylesheet" href="../css/common.css">
+  <style>
+    body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+    .header h1::before { content: '🎬 '; }
+
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 680px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* ---------- ファイルドロップゾーン ---------- */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(74, 158, 255, 0.05);
+    }
+    .drop-zone .icon { font-size: 36px; margin-bottom: 8px; }
+    .drop-zone .hint { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+
+    /* ---------- 選択済みファイル ---------- */
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--surface2);
+      border-radius: var(--radius);
+      font-size: 13px;
+    }
+    .file-info.visible { display: flex; }
+    .file-info .filename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-info .change-btn {
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+    .file-info .change-btn:hover { color: var(--text); background: var(--border); }
+
+    /* ---------- 言語セレクター ---------- */
+    .lang-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .lang-row label { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
+    .lang-row select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    /* ---------- セクション ---------- */
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 10px;
+    }
+
+    .result-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+    .result-row.done { color: var(--success); }
+    .result-row.error { color: var(--error); }
+    .result-path {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+
+    /* ---------- Open Player ボタン ---------- */
+    .open-player-wrap {
+      display: none;
+      padding-top: 8px;
+    }
+    .open-player-wrap.visible { display: block; }
+    .btn-open-player {
+      width: 100%;
+      justify-content: center;
+      font-size: 15px;
+      padding: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <h1>Language Caption Player</h1>
+  </header>
+
+  <main class="main">
+    <!-- ① 動画選択 -->
+    <div>
+      <div class="drop-zone" id="dropZone">
+        <div class="icon">📂</div>
+        <div>動画ファイルをドロップ、またはクリックして選択</div>
+        <div class="hint">MP4 / MKV / AVI / MOV / WebM</div>
+      </div>
+      <div class="file-info" id="fileInfo">
+        <span>🎬</span>
+        <span class="filename" id="fileName"></span>
+        <button class="change-btn" id="changeBtn">変更</button>
+      </div>
+    </div>
+
+    <!-- ② 言語設定 -->
+    <div class="lang-row">
+      <label>音声言語：</label>
+      <select id="langSelect">
+        <option value="">自動検出</option>
+        <option value="en">English</option>
+        <option value="zh">中文</option>
+        <option value="ko">한국어</option>
+        <option value="fr">Français</option>
+        <option value="de">Deutsch</option>
+        <option value="es">Español</option>
+        <option value="ja">日本語</option>
+      </select>
+    </div>
+
+    <!-- ③ 文字起こし -->
+    <div class="card">
+      <div class="section-label">① 文字起こし</div>
+      <button class="btn btn-primary" id="transcribeBtn" disabled>
+        🎙️ 字幕を生成
+      </button>
+      <div class="progress-wrap" id="transcribeProgress" style="display:none">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="transcribeFill"></div></div>
+        <div class="progress-label" id="transcribeLabel">準備中...</div>
+      </div>
+      <div class="result-row" id="transcribeResult"></div>
+    </div>
+
+    <!-- ④ 日本語翻訳 -->
+    <div class="card">
+      <div class="section-label">② 日本語字幕を生成</div>
+      <button class="btn btn-primary" id="translateBtn" disabled>
+        🇯🇵 日本語字幕を生成
+      </button>
+      <div class="progress-wrap" id="translateProgress" style="display:none">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="translateFill"></div></div>
+        <div class="progress-label" id="translateLabel">準備中...</div>
+      </div>
+      <div class="result-row" id="translateResult"></div>
+    </div>
+
+    <!-- ⑤ プレイヤーで開く -->
+    <div class="open-player-wrap" id="openPlayerWrap">
+      <button class="btn btn-success btn-open-player" id="openPlayerBtn">
+        ▶ プレイヤーで開く
+      </button>
+    </div>
+  </main>
+
+  <script>
+    const API = 'http://127.0.0.1:8765'
+
+    let videoPath = null
+    let origSrtPath = null
+    let jpSrtPath = null
+
+    // ---------- 動画選択 ----------
+    const dropZone  = document.getElementById('dropZone')
+    const fileInfo  = document.getElementById('fileInfo')
+    const fileName  = document.getElementById('fileName')
+    const changeBtn = document.getElementById('changeBtn')
+
+    async function selectVideo() {
+      const p = await window.electronAPI.openVideo()
+      if (p) setVideo(p)
+    }
+
+    function setVideo(p) {
+      videoPath = p
+      fileName.textContent = p.split(/[\\/]/).pop()
+      dropZone.style.display = 'none'
+      fileInfo.classList.add('visible')
+      document.getElementById('transcribeBtn').disabled = false
+      // リセット
+      origSrtPath = jpSrtPath = null
+      resetSection('transcribe')
+      resetSection('translate')
+      document.getElementById('openPlayerWrap').classList.remove('visible')
+    }
+
+    dropZone.addEventListener('click', selectVideo)
+    changeBtn.addEventListener('click', selectVideo)
+
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault(); dropZone.classList.add('drag-over')
+    })
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'))
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault()
+      dropZone.classList.remove('drag-over')
+      const file = e.dataTransfer.files[0]
+      if (file) setVideo(file.path)
+    })
+
+    // ---------- ヘルパー ----------
+    function resetSection(kind) {
+      document.getElementById(`${kind}Progress`).style.display = 'none'
+      document.getElementById(`${kind}Fill`).style.width = '0%'
+      document.getElementById(`${kind}Result`).innerHTML = ''
+    }
+
+    function setProgress(kind, pct, label) {
+      document.getElementById(`${kind}Progress`).style.display = 'block'
+      document.getElementById(`${kind}Fill`).style.width = pct + '%'
+      document.getElementById(`${kind}Label`).textContent = label
+    }
+
+    function setResult(kind, ok, text) {
+      const el = document.getElementById(`${kind}Result`)
+      el.className = 'result-row ' + (ok ? 'done' : 'error')
+      el.innerHTML = ok
+        ? `<span>✓</span><span class="result-path" title="${text}">${text.split(/[\\/]/).pop()}</span>`
+        : `<span>✗</span><span>${text}</span>`
+    }
+
+    // ---------- SSE ストリーム読み込み ----------
+    async function readSSE(response, onEvent) {
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop()
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try { onEvent(JSON.parse(line.slice(6))) } catch {}
+          }
+        }
+      }
+    }
+
+    // ---------- ① 文字起こし ----------
+    document.getElementById('transcribeBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('transcribeBtn')
+      btn.disabled = true
+      resetSection('transcribe')
+      setProgress('transcribe', 10, '音声を抽出中...')
+
+      try {
+        const lang = document.getElementById('langSelect').value || null
+        const res = await fetch(`${API}/transcribe`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_path: videoPath, language: lang }),
+        })
+        await readSSE(res, event => {
+          if (event.status === 'extracting_audio') {
+            setProgress('transcribe', 20, '音声を抽出中...')
+          } else if (event.status === 'saving_srt') {
+            setProgress('transcribe', 80, `SRT を生成中 (${event.segments} セグメント)`)
+          } else if (event.status === 'done') {
+            setProgress('transcribe', 100, '完了')
+            origSrtPath = event.srt_path
+            setResult('transcribe', true, origSrtPath)
+            document.getElementById('translateBtn').disabled = false
+          } else if (event.status === 'error') {
+            setResult('transcribe', false, event.message)
+          }
+        })
+      } catch (e) {
+        setResult('transcribe', false, `接続エラー: ${e.message}`)
+      }
+      btn.disabled = false
+    })
+
+    // ---------- ② 日本語翻訳 ----------
+    document.getElementById('translateBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('translateBtn')
+      btn.disabled = true
+      resetSection('translate')
+      setProgress('translate', 0, '翻訳を開始中...')
+
+      try {
+        const res = await fetch(`${API}/translate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ srt_path: origSrtPath }),
+        })
+        await readSSE(res, event => {
+          if (event.status === 'translating') {
+            const pct = event.total > 0 ? Math.round(event.current / event.total * 100) : 0
+            setProgress('translate', pct, `翻訳中 ${event.current} / ${event.total}`)
+          } else if (event.status === 'done') {
+            setProgress('translate', 100, '完了')
+            jpSrtPath = event.srt_path
+            setResult('translate', true, jpSrtPath)
+            document.getElementById('openPlayerWrap').classList.add('visible')
+          } else if (event.status === 'error') {
+            setResult('translate', false, event.message)
+          }
+        })
+      } catch (e) {
+        setResult('translate', false, `接続エラー: ${e.message}`)
+      }
+      btn.disabled = false
+    })
+
+    // ---------- プレイヤーで開く ----------
+    document.getElementById('openPlayerBtn').addEventListener('click', () => {
+      window.electronAPI.openPlayer({
+        videoPath,
+        origSrt: origSrtPath,
+        jpSrt:   jpSrtPath,
+      })
+    })
+  </script>
+</body>
+</html>

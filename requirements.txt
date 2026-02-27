@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+# qwen-asr が transformers 4.57.6 に依存するためバージョン固定
+# （qwen-asr は conda 環境に別途インストール済み）
+transformers==4.57.6
+torch
+torchaudio
+soundfile
+ffmpeg-python
+srt
+accelerate
