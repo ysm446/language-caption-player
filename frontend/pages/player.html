@@ -294,6 +294,7 @@
       <div class="ctrl-row">
         <div class="ctrl-left">
           <button class="ctrl-btn" id="repeatBtn" title="字幕を繰り返す (R)">↩</button>
+          <button class="ctrl-btn" id="nextSubBtn" title="次の字幕へ (N)">↪</button>
           <button class="ctrl-btn" id="rewindBtn" title="5秒戻る (←)">5秒戻る</button>
           <button class="ctrl-btn" id="playBtn" title="再生/一時停止 (Space)">▶</button>
           <div class="volume-row">
@@ -370,6 +371,9 @@
       const i = subs.indexOf(currentSub)
       if (i > 0) return subs[i - 1]
       return null
+    }
+    function findNextSubByTime(subs, t) {
+      return subs.find(s => s.start > t + 0.001) ?? null
     }
 
     // 単語を <span class="word"> で囲む（セグメント時間を均等割りで各単語に付与）
@@ -459,9 +463,19 @@
       } else {
         video.currentTime = Math.max(0, t - 5)
       }
-      if (video.paused) video.play()
+    }
+    function jumpToNextSubtitle() {
+      const t = video.currentTime
+      const candidates = [
+        findNextSubByTime(origSubtitles, t),
+        findNextSubByTime(jpSubtitles, t),
+      ].filter(Boolean)
+      if (candidates.length === 0) return
+      const nextSub = candidates.reduce((a, b) => (a.start <= b.start ? a : b))
+      video.currentTime = nextSub.start
     }
     document.getElementById('repeatBtn').addEventListener('click', repeatSubtitle)
+    document.getElementById('nextSubBtn').addEventListener('click', jumpToNextSubtitle)
     document.getElementById('rewindBtn').addEventListener('click', () => {
       video.currentTime = Math.max(0, video.currentTime - 5)
     })
@@ -481,6 +495,7 @@
       if (e.code === 'ArrowRight') video.currentTime += 5
       if (e.code === 'ArrowLeft')  video.currentTime -= 5
       if (e.code === 'KeyR')       { e.preventDefault(); repeatSubtitle() }
+      if (e.code === 'KeyN')       { e.preventDefault(); jumpToNextSubtitle() }
     })
 
     function fmt(sec) {
